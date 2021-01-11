@@ -1,0 +1,31 @@
+kind: BuildConfig
+apiVersion: build.openshift.io/v1
+metadata:
+  name: php74-node10
+  labels:
+    app: php74-node10
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: 'php74-node10:latest'
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  source:
+    type: Git
+    git:
+      uri: 'https://github.com/dav1dli/php74-node10.git'
+    contextDir: /
+  triggers:
+    - type: Generic
+      generic:
+        secretReference:
+          name: skill-matrix-generic-webhook-secret
+    - type: GitHub
+      github:
+        secretReference:
+          name: skill-matrix-github-webhook-secret
+    - type: ConfigChange
+  runPolicy: Serial
