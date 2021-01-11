@@ -1,0 +1,9 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  labels:
+    app: php74-node10
+  name: php74-node10
+spec:
+  lookupPolicy:
+    local: false
