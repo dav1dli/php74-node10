@@ -1,0 +1,71 @@
+services:
+  - docker:dind
+
+variables:
+  HTTP_PROXY: http://webproxy.comp.db.de:8080
+  HTTPS_PROXY: http://webproxy.comp.db.de:8080
+  NO_PROXY: 169.254.169.254,127.0.0.1,localhost,db.de,signintra.com,intranet.deutschebahn.com,intranet-test.deutschebahn.com,intranet.dbschenker.com,service.deutschebahn.com,dbplanet.deutschebahn.com,amazonaws.com,docker
+  GIT_SUBMODULE_STRATEGY: normal
+  ARTIFACTORY_URL: bahnhub.tech.rz.db.de:443
+  REPO_PREFIX: dbcs-docker
+  TEST_COMMAND: "php --version"
+
+stages:
+  - build
+
+.bash: &bash |
+  [[ "$TRACE" ]] && set -x
+
+  function set_docker_registry() {
+    echo "Branch is '${CI_COMMIT_REF_NAME}'."
+    if [ "${CI_COMMIT_REF_NAME}" = "master" ]; then
+      echo "Will use prod-local docker repository."
+      export DOCKER_REGISTRY="${REPO_PREFIX}-prod-local.${ARTIFACTORY_URL}"
+    else
+      echo "Will use stage-dev-local docker repository."
+      export DOCKER_REGISTRY="${REPO_PREFIX}-stage-dev-local.${ARTIFACTORY_URL}"
+    fi
+  }
+
+  function export_build_args() {
+    export BUILD_ARGS="--build-arg HTTP_PROXY=${HTTP_PROXY} \
+                       --build-arg HTTPS_PROXY=${HTTPS_PROXY} \
+                       --build-arg NO_PROXY=${NO_PROXY} \
+                       --build-arg REDHAT_USERNAME=${REDHAT_USERNAME} \
+                       --build-arg REDHAT_PASSWORD=${REDHAT_PASSWORD} \
+                       --build-arg REDHAT_POOLID=${REDHAT_POOLID}"
+  }
+
+  function docker_build() {
+    docker build . ${BUILD_ARGS} -t ${DOCKER_REGISTRY}/${CI_PROJECT_NAME}:${VERSION}
+  }
+
+  function docker_test() {
+    docker run ${DOCKER_REGISTRY}/${CI_PROJECT_NAME}:${VERSION} ${TEST_COMMAND}
+  }
+
+  function docker_push() {
+    echo "DOCKER_REGISTRY: ${DOCKER_REGISTRY}"
+    echo ${ARTIFACTORY_API_KEY} | docker login --username "${ARTIFACTORY_USER}" --password-stdin ${DOCKER_REGISTRY}
+    docker push ${DOCKER_REGISTRY}/${CI_PROJECT_NAME}:${VERSION}
+
+    if [ "${CI_COMMIT_REF_NAME}" = "master" ]; then
+      docker tag ${DOCKER_REGISTRY}/${CI_PROJECT_NAME}:${VERSION} ${DOCKER_REGISTRY}/${CI_PROJECT_NAME}:latest
+      docker push ${DOCKER_REGISTRY}/${CI_PROJECT_NAME}:latest
+    fi
+  }
+
+build-image:
+  image: docker:stable
+  stage: build
+  variables:
+    VERSION: latest
+  script:
+    - *bash
+    - export_build_args
+    - set_docker_registry
+    - docker_build
+    - docker_test
+  tags:
+    - dev
+
